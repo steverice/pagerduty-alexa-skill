@@ -45,6 +45,8 @@ exports.handler = function(event, context) {
 
   accessToken = event.session.user.accessToken;
 
+  console.log(JSON.stringify(event.request));
+
   alexa.appId = APP_ID;
   alexa.registerHandlers(handlers);
   alexa.execute();
@@ -113,15 +115,32 @@ const handlers = {
       return phrases[Math.floor(Math.random() * phrases.length)];
     };
 
-    const tellOncalls = function(oncallTells) {
+    const roleify = function(word, role) {
+      role = role || 'NN'; // By default, mark as a noun
+      return `<w role="ivona:${role}">${word}</w>`;
+    };
+
+    const tellOncalls = function(oncallTells, userName) {
       let forevers = oncallTells[0];
       let endings = oncallTells[1];
       let response = '';
 
       if (!forevers.length && !endings.length) {
-        response = `${celebrationPhrase()} You are not on call.`;
+        if (userName) {
+          response = `${roleify(userName)} is not on call.`;
+        } else {
+          response = `${celebrationPhrase()} You are not on call.`;
+        }
       } else {
-        response = 'You are on call for ';
+        if (userName) {
+          response = `${roleify(userName)} is on call for `;
+        } else {
+          response = `You are on call for `;
+        }
+
+        forevers = forevers.map(roleify);
+        endings = endings.map(roleify);
+
         if (forevers.length > 1) { forevers[forevers.length - 1] = `and ${forevers[forevers.length - 1]}`; }
         response += `${forevers.join(', ')} indefinitely`;
         if (endings.length > 1) { endings[forevers.length - 1] = `and ${endings[forevers.length - 1]}`; }
@@ -138,25 +157,56 @@ const handlers = {
         fetchFromPagerDuty('/user')
           .then((user) => {
             return oncalls(user.user.id).then((oncalls) => {
-              return tellOncalls(oncallTells(oncalls, user.user.time_zone));
+              return tellOncalls(oncallTells(oncalls, user.user.time_zone), true);
             });
           });
         break;
+      case undefined:
+        alexa.emit(':tell', `Sorry, I didn't understand which user you asked for.`);
+        break;
       default:
-        // TODO support other users
-        alexa.emit(':tell', `Sorry, I couldn't find the user <break strength="weak"/>"${slots.User.value}"`);
+        fetchFromPagerDuty('/users', {
+          query: {
+            'query': slots.User.value,
+            limit: 5
+          }
+        }).then((users) => {
+          const spokenUser = roleify(slots.User.value);
+          if (users.more) {
+            alexa.emit(':tell', `I found too many users matching <break strength="weak"/>"${spokenUser}". Please try again with the person's full name.`);
+          } else if (users.users.length == 0) {
+            alexa.emit(':tell', `Sorry, I couldn't find the user <break strength="weak"/>"${spokenUser}"`);
+          } else if (users.users.length != 1) {
+            let foundNames = users.users.map((user) => { return user.name; }).map(roleify);
+            foundNames[foundNames.length - 1] = `or ${foundNames[foundNames.length - 1]}`;
+            alexa.emit(':tell', `I found a few users matching <break strength="weak"/>"${spokenUser}". Did you mean ${foundNames.join(', ')}?`);
+          } else {
+            return oncalls(users.users[0].id).then((oncalls) => {
+              return tellOncalls(oncallTells(oncalls, users.users[0].time_zone), users.users[0].name);
+            });
+          }
+        });
         break;
     }
   },
   'AMAZON.HelpIntent': function () {
-    const speechOutput = 'You can ask me if you are currently on call.';
+    const speechOutput = 'You can ask me if you or another user is currently on call.';
     const reprompt = 'What can I help you with?';
     this.emit(':ask', speechOutput, reprompt);
   },
   'AMAZON.CancelIntent': function () {
-    this.emit(':tell', 'Goodbye!');
+    this.emit('Exit');
   },
   'AMAZON.StopIntent': function () {
-    this.emit(':tell', 'Goodbye!');
+    this.emit('Exit');
+  },
+  'SessionEndedRequest': function () {
+    if (this.event.request.reason == 'ERROR') {
+      this.emit(':tell', 'Oops! Something went wrong. Please try again.');
+    }
+    this.emit('Exit');
+  },
+  'Exit': function() {
+    this.emit(':responseReady');
   }
 };
