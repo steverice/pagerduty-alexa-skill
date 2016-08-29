@@ -1,0 +1,38 @@
+{
+  "name": "pagerduty-alexa-skill",
+  "version": "0.1.0",
+  "description": "An Amazon Alexa skill that provides information about PagerDuty.",
+  "main": "index.js",
+  "enginesStrict": true,
+  "engines": {
+    "node": ">=4.3 <4.4"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "alexa",
+    "skill",
+    "pagerduty",
+    "on call",
+    "incident management"
+  ],
+  "author": "Steve Rice",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/steverice/pagerduty-alexa-skill"
+  },
+  "dependencies": {
+    "alexa-sdk": "^1.0.5",
+    "moment": "^2.14.1",
+    "moment-timezone": "^0.5.5",
+    "node-fetch": "^1.6.0",
+    "url-parse": "^1.1.3"
+  },
+  "devDependencies": {
+    "grunt": "^1.0.1",
+    "grunt-aws-lambda": "^0.13.0",
+    "grunt-node-version": "^1.0.2"
+  }
+}

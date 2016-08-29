@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Invoke" type="js.build_tools.grunt" factoryName="Grunt.js">
+    <node-interpreter value="project" />
+    <gruntfile value="$PROJECT_DIR$/Gruntfile.js" />
+    <tasks>
+      <task value="invoke" />
+    </tasks>
+    <arguments value="--stack" />
+    <envs />
+    <method />
+  </configuration>
+</component>
