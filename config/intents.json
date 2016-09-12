@@ -1,0 +1,26 @@
+{
+  "intents": [
+    {
+      "intent": "OnCallIntent",
+      "slots": [
+        {
+          "name": "User",
+          "type": "USER_KEYWORDS"
+        },
+        {
+          "name": "Date",
+          "type": "AMAZON.DATE"
+        }
+      ]
+    },
+    {
+      "intent": "AMAZON.HelpIntent"
+    },
+    {
+      "intent": "AMAZON.StopIntent"
+    },
+    {
+      "intent": "AMAZON.CancelIntent"
+    }
+  ]
+}
