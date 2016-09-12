@@ -11,6 +11,13 @@ const PAGERDUTY_API_ROOT = 'https://api.pagerduty.com';
 
 let accessToken = null;
 
+const UserFacingError = function(message) {
+  this.message = message;
+  this.toString = function() {
+    return this.message;
+  };
+};
+
 const fetchFromPagerDuty = function(path, options) {
   options = options || {};
 
@@ -22,6 +29,9 @@ const fetchFromPagerDuty = function(path, options) {
     'Authorization': 'Bearer ' + accessToken,
     'Accept': 'application/vnd.pagerduty+json;version=2.0'
   };
+
+  const requestUri = requestUrl.toString();
+  console.log(requestUri);
 
   return fetch(requestUrl.toString(), {
     headers: headers
@@ -64,12 +74,11 @@ const handlers = {
 
     const slots = alexa.event.request.intent.slots;
 
-    const oncalls = function(userId) {
-      return fetchFromPagerDuty('/oncalls', {
-        query: {
-          'user_ids[]': userId
-        }
-      }).then(function(oncalls) {
+    const oncalls = function(userId, options) {
+      options = options || {};
+      options.query = options.query || {};
+      options.query['user_ids[]'] = userId;
+      return fetchFromPagerDuty('/oncalls', options).then(function(oncalls) {
         let filteredOncalls = oncalls.oncalls;
 
         const scheduleOnly = true;
@@ -152,12 +161,65 @@ const handlers = {
       alexa.emit(':tell', response);
     };
 
+    const getSinceUntil = function(dateSlot) {
+      if (slots.Date.value) {
+        // We have to do some trickery to figure out exactly what the user asked for
+        // moment.js will represent "Sunday", "next week", or <specific date> all as the same thing, so we need to
+        // look at the format used for creation in order ot know what the intent was
+        const userDate = moment(dateSlot);
+        switch (userDate.creationData().format) {
+          case 'YYYY-MM-DD':
+            // asked for a specific date, so end at the end of the day
+            return {
+              since: userDate.toISOString(),
+              until: userDate.endOf('day').toISOString()
+            };
+            break;
+          case 'GGGG-[W]WW':
+            // asked for a week or a weekend
+            if (userDate.creationData().input.indexOf('WE') != -1) {
+              // TODO: not terribly locale aware, but the best we can do here is ask for day 6 (Saturday)
+              return {
+                since: userDate.day(6).toISOString(),
+                until: userDate.add(1, 'week').day(1).endOf('day').toISOString()
+              };
+            } else {
+              return {
+                since: userDate.toISOString(),
+                until: userDate.endOf('week').toISOString()
+              };
+            }
+            break;
+          case 'YYYY-MM':
+            // asked for a specific month, so end at the end of the month
+            return {
+              since: userDate.toISOString(),
+              until: userDate.endOf('month').toISOString()
+            };
+            break;
+          case undefined:
+            // moment doesn't handle all Amazon dates, like "next year", "this spring"
+            // but these don't make a lot of sense in this application
+            console.log(`Overly-general date asked for: ${userDate.creationData().input}`);
+            throw new UserFacingError('Sorry, I need a more specific date. Please ask again.');
+            break;
+          default:
+            console.error(`Unexpected date format received from Amazon: ${userDate.creationData().input}`);
+            throw new UserFacingError('Sorry, I was unable to figure out what date you asked for. Please ask again.');
+        }
+      }
+    };
+
+    let oncallOptions = {};
+
+    oncallOptions.query = getSinceUntil(slots.Date.value);
+
     switch(slots.User.value) {
       case 'I':
         fetchFromPagerDuty('/user')
           .then((user) => {
-            return oncalls(user.user.id).then((oncalls) => {
-              return tellOncalls(oncallTells(oncalls, user.user.time_zone), true);
+            return oncalls(user.user.id, oncallOptions).then((oncalls) => {
+              return tellOncalls(oncallTells(oncalls, user.user.time_zone));
             });
           });
         break;
@@ -181,7 +243,7 @@ const handlers = {
             foundNames[foundNames.length - 1] = `or ${foundNames[foundNames.length - 1]}`;
             alexa.emit(':tell', `I found a few users matching <break strength="weak"/>"${spokenUser}". Did you mean ${foundNames.join(', ')}?`);
           } else {
-            return oncalls(users.users[0].id).then((oncalls) => {
+            return oncalls(users.users[0].id, oncallOptions).then((oncalls) => {
               return tellOncalls(oncallTells(oncalls, users.users[0].time_zone), users.users[0].name);
             });
           }
